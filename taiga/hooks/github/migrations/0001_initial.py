@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-from django.contrib.auth import get_user_model
 from django.db import migrations
 from django.core.files import File
 
@@ -11,7 +10,7 @@ import uuid
 def create_github_system_user(apps, schema_editor):
     # We get the model from the versioned app registry;
     # if we directly import it, it'll be the wrong version
-    User = get_user_model()
+    User = apps.get_model("users", "User")
     db_alias = schema_editor.connection.alias
     random_hash = uuid.uuid4().hex
     user = User.objects.using(db_alias).create(
