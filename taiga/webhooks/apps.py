@@ -18,11 +18,10 @@
 from django.apps import AppConfig
 from django.db.models import signals
 
-from . import signal_handlers as handlers
 from taiga.projects.history.models import HistoryEntry
 
 
-def connect_webhooks_signals():
+def connect_webhooks_signals(handlers):
     signals.post_save.connect(handlers.on_new_history_entry, sender=HistoryEntry, dispatch_uid="webhooks")
 
 
@@ -35,4 +34,5 @@ class WebhooksAppConfig(AppConfig):
     verbose_name = "Webhooks App Config"
 
     def ready(self):
-        connect_webhooks_signals()
+        from . import signal_handlers as handlers
+        connect_webhooks_signals(handlers)

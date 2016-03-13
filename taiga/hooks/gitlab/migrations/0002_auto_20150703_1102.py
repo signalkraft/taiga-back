@@ -2,12 +2,13 @@
 from __future__ import unicode_literals
 
 from django.db import models, migrations
+from django.contrib.auth import get_user_model
 from django.core.files import File
 
 def update_gitlab_system_user_photo_to_v2(apps, schema_editor):
     # We get the model from the versioned app registry;
     # if we directly import it, it'll be the wrong version
-    User = apps.get_model("users", "User")
+    User = get_user_model()
     db_alias = schema_editor.connection.alias
 
     try:
@@ -23,7 +24,7 @@ def update_gitlab_system_user_photo_to_v2(apps, schema_editor):
 def update_gitlab_system_user_photo_to_v1(apps, schema_editor):
     # We get the model from the versioned app registry;
     # if we directly import it, it'll be the wrong version
-    User = apps.get_model("users", "User")
+    User = get_user_model()
     db_alias = schema_editor.connection.alias
 
     try:

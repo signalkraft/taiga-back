@@ -3,12 +3,13 @@ from __future__ import unicode_literals
 
 from django.db import models, migrations
 from django.conf import settings
+from django.contrib.auth import get_user_model
 import django_pgjson.fields
 
 
 def migrate_github_id(apps, schema_editor):
     AuthData = apps.get_model("users", "AuthData")
-    User = apps.get_model("users", "User")
+    User = get_user_model()
     for user in User.objects.all():
         if user.github_id:
             AuthData.objects.create(user=user, key="github", value=user.github_id, extra={})
