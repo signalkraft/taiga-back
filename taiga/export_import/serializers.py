@@ -30,10 +30,10 @@ from django.utils.translation import ugettext as _
 from django.contrib.contenttypes.models import ContentType
 
 
-from taiga import mdrender
 from taiga.base.api import serializers
 from taiga.base.fields import JsonField, PgArrayField
 
+from taiga.mdrender.service import render as mdrender
 from taiga.projects import models as projects_models
 from taiga.projects.custom_attributes import models as custom_attributes_models
 from taiga.projects.userstories import models as userstories_models
@@ -44,7 +44,6 @@ from taiga.projects.wiki import models as wiki_models
 from taiga.projects.history import models as history_models
 from taiga.projects.attachments import models as attachments_models
 from taiga.timeline import models as timeline_models
-from taiga.timeline import service as timeline_service
 from taiga.users import models as users_models
 from taiga.projects.notifications import services as notifications_services
 from taiga.projects.votes import services as votes_service
@@ -156,7 +155,7 @@ class CommentField(serializers.WritableField):
 
     def field_from_native(self, data, files, field_name, into):
         super().field_from_native(data, files, field_name, into)
-        into["comment_html"] = mdrender.render(self.context['project'], data.get("comment", ""))
+        into["comment_html"] = mdrender(self.context['project'], data.get("comment", ""))
 
 
 class ProjectRelatedField(serializers.RelatedField):
@@ -675,12 +674,7 @@ class ProjectExportSerializer(WatcheableObjectModelSerializer):
     issues = IssueExportSerializer(many=True, required=False)
     wiki_links = WikiLinkExportSerializer(many=True, required=False)
     wiki_pages = WikiPageExportSerializer(many=True, required=False)
-    timeline = serializers.SerializerMethodField("get_timeline")
 
     class Meta:
         model = projects_models.Project
         exclude = ('id', 'creation_template', 'members')
-
-    def get_timeline(self, obj):
-        timeline_qs = timeline_service.get_project_timeline(obj)
-        return TimelineExportSerializer(timeline_qs, many=True).data

@@ -31,7 +31,7 @@ INSTALLED_APPS = INSTALLED_APPS + [
 
 DATABASES = {
     'default': {
-        'ENGINE': 'transaction_hooks.backends.postgresql_psycopg2',
+        'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'test',
         'USER': 'postgres',
         'PASSWORD': 'postgres',

@@ -9,6 +9,7 @@ from taiga.base.utils import json
 from taiga.hooks.gitlab import event_hooks
 from taiga.hooks.gitlab.api import GitLabViewSet
 from taiga.hooks.exceptions import ActionSyntaxException
+from taiga.projects import choices as project_choices
 from taiga.projects.issues.models import Issue
 from taiga.projects.tasks.models import Task
 from taiga.projects.userstories.models import UserStory
@@ -59,6 +60,23 @@ def test_ok_signature(client):
     assert response.status_code == 204
 
 
+def test_ok_empty_payload(client):
+    project = f.ProjectFactory()
+    f.ProjectModulesConfigFactory(project=project, config={
+        "gitlab": {
+            "secret": "tpnIwJDz4e",
+            "valid_origin_ips": ["111.111.111.111"],
+        }
+    })
+
+    url = reverse("gitlab-hook-list")
+    url = "{}?project={}&key={}".format(url, project.id, "tpnIwJDz4e")
+    data = {}
+    response = client.post(url,"null", content_type="application/json", REMOTE_ADDR="111.111.111.111")
+
+    assert response.status_code == 204
+
+
 def test_ok_signature_ip_in_network(client):
     project = f.ProjectFactory()
     f.ProjectModulesConfigFactory(project=project, config={
@@ -79,12 +97,75 @@ def test_ok_signature_ip_in_network(client):
     assert response.status_code == 204
 
 
+def test_ok_signature_invalid_network(client):
+    project = f.ProjectFactory()
+    f.ProjectModulesConfigFactory(project=project, config={
+        "gitlab": {
+            "secret": "tpnIwJDz4e",
+            "valid_origin_ips": ["131.103.20.160/27;165.254.145.0/26;104.192.143.0/24"],
+        }
+    })
+
+    url = reverse("gitlab-hook-list")
+    url = "{}?project={}&key={}".format(url, project.id, "tpnIwJDz4e")
+    data = json.dumps({"push": {"changes": [{"new": {"target": { "message": "test message"}}}]}})
+    response = client.post(url,
+                           data,
+                           content_type="application/json",
+                           HTTP_X_EVENT_KEY="repo:push",
+                           REMOTE_ADDR="104.192.143.193")
+
+    assert response.status_code == 400
+    assert "Bad signature" in response.data["_error_message"]
+
+
+
+def test_blocked_project(client):
+    project = f.ProjectFactory(blocked_code=project_choices.BLOCKED_BY_STAFF)
+    f.ProjectModulesConfigFactory(project=project, config={
+        "gitlab": {
+            "secret": "tpnIwJDz4e",
+            "valid_origin_ips": ["111.111.111.111"],
+        }
+    })
+
+    url = reverse("gitlab-hook-list")
+    url = "{}?project={}&key={}".format(url, project.id, "tpnIwJDz4e")
+    data = {"test:": "data"}
+    response = client.post(url,
+                           json.dumps(data),
+                           content_type="application/json",
+                           REMOTE_ADDR="111.111.111.111")
+
+    assert response.status_code == 451
+
+
 def test_invalid_ip(client):
     project = f.ProjectFactory()
     f.ProjectModulesConfigFactory(project=project, config={
         "gitlab": {
             "secret": "tpnIwJDz4e",
             "valid_origin_ips": ["111.111.111.111"],
+        }
+    })
+
+    url = reverse("gitlab-hook-list")
+    url = "{}?project={}&key={}".format(url, project.id, "tpnIwJDz4e")
+    data = {"test:": "data"}
+    response = client.post(url,
+                           json.dumps(data),
+                           content_type="application/json",
+                           REMOTE_ADDR="111.111.111.112")
+
+    assert response.status_code == 400
+
+
+def test_invalid_origin_ip_settings(client):
+    project = f.ProjectFactory()
+    f.ProjectModulesConfigFactory(project=project, config={
+        "gitlab": {
+            "secret": "tpnIwJDz4e",
+            "valid_origin_ips": ["testing"]
         }
     })
 
@@ -327,7 +408,7 @@ def test_issues_event_opened_issue(client):
     issue.project.default_severity = issue.severity
     issue.project.default_priority = issue.priority
     issue.project.save()
-    Membership.objects.create(user=issue.owner, project=issue.project, role=f.RoleFactory.create(project=issue.project), is_owner=True)
+    Membership.objects.create(user=issue.owner, project=issue.project, role=f.RoleFactory.create(project=issue.project), is_admin=True)
     notify_policy = NotifyPolicy.objects.get(user=issue.owner, project=issue.project)
     notify_policy.notify_level = NotifyLevel.all
     notify_policy.save()
@@ -535,7 +616,7 @@ def test_issues_event_bad_comment(client):
 
 def test_api_get_project_modules(client):
     project = f.create_project()
-    f.MembershipFactory(project=project, user=project.owner, is_owner=True)
+    f.MembershipFactory(project=project, user=project.owner, is_admin=True)
 
     url = reverse("projects-modules", args=(project.id,))
 
@@ -550,7 +631,7 @@ def test_api_get_project_modules(client):
 
 def test_api_patch_project_modules(client):
     project = f.create_project()
-    f.MembershipFactory(project=project, user=project.owner, is_owner=True)
+    f.MembershipFactory(project=project, user=project.owner, is_admin=True)
 
     url = reverse("projects-modules", args=(project.id,))
 

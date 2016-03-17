@@ -53,6 +53,8 @@ from taiga.base import response
 from .settings import api_settings
 from .utils import get_object_or_404
 
+from .. import exceptions as exc
+from ..decorators import model_pk_lock
 
 def _get_validation_exclusions(obj, pk=None, slug_field=None, lookup_field=None):
     """
@@ -159,11 +161,14 @@ class UpdateModelMixin:
     """
 
     @tx.atomic
+    @model_pk_lock
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         self.object = self.get_object_or_none()
-
         self.check_permissions(request, 'update', self.object)
+
+        if self.object is None:
+            raise Http404
 
         serializer = self.get_serializer(self.object, data=request.DATA,
                                          files=request.FILES, partial=partial)
@@ -225,6 +230,7 @@ class DestroyModelMixin:
     Destroy a model instance.
     """
     @tx.atomic
+    @model_pk_lock
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object_or_none()
         self.check_permissions(request, 'destroy', obj)
@@ -237,3 +243,32 @@ class DestroyModelMixin:
         obj.delete()
         self.post_delete(obj)
         return response.NoContent()
+
+
+class BlockeableModelMixin:
+    def is_blocked(self, obj):
+        raise NotImplementedError("is_blocked must be overridden")
+
+    def pre_conditions_blocked(self, obj):
+        #Raises permission exception
+        if obj is not None and self.is_blocked(obj):
+            raise exc.Blocked(_("Blocked element"))
+
+
+class BlockeableSaveMixin(BlockeableModelMixin):
+    def pre_conditions_on_save(self, obj):
+        # Called on create and update calls
+        self.pre_conditions_blocked(obj)
+        super().pre_conditions_on_save(obj)
+
+
+class BlockeableDeleteMixin():
+    def pre_conditions_on_delete(self, obj):
+        # Called on destroy call
+        self.pre_conditions_blocked(obj)
+        super().pre_conditions_on_delete(obj)
+
+
+class BlockedByProjectMixin(BlockeableSaveMixin, BlockeableDeleteMixin):
+    def is_blocked(self, obj):
+        return obj.project is not None and obj.project.blocked_code is not None

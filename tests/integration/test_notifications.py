@@ -422,8 +422,6 @@ def test_send_notifications_using_services_method_for_user_stories(settings, mai
         assert list_id == headers.get('List-ID')
 
         assert 'Thread-Index' in headers
-        # always is b64 encoded 22 bytes
-        assert len(base64.b64decode(headers.get('Thread-Index'))) == 22
 
         # hashes should match for identical ids and times
         # we check the actual method in test_ms_thread_id()
@@ -516,8 +514,6 @@ def test_send_notifications_using_services_method_for_tasks(settings, mail):
         assert list_id == headers.get('List-ID')
 
         assert 'Thread-Index' in headers
-        # always is b64 encoded 22 bytes
-        assert len(base64.b64decode(headers.get('Thread-Index'))) == 22
 
         # hashes should match for identical ids and times
         # we check the actual method in test_ms_thread_id()
@@ -610,8 +606,6 @@ def test_send_notifications_using_services_method_for_issues(settings, mail):
         assert list_id == headers.get('List-ID')
 
         assert 'Thread-Index' in headers
-        # always is b64 encoded 22 bytes
-        assert len(base64.b64decode(headers.get('Thread-Index'))) == 22
 
         # hashes should match for identical ids and times
         # we check the actual method in test_ms_thread_id()
@@ -703,8 +697,6 @@ def test_send_notifications_using_services_method_for_wiki_pages(settings, mail)
         assert list_id == headers.get('List-ID')
 
         assert 'Thread-Index' in headers
-        # always is b64 encoded 22 bytes
-        assert len(base64.b64decode(headers.get('Thread-Index'))) == 22
 
         # hashes should match for identical ids and times
         # we check the actual method in test_ms_thread_id()
@@ -720,7 +712,7 @@ def test_resource_notification_test(client, settings, mail):
     user2 = f.UserFactory.create()
     project = f.ProjectFactory.create(owner=user1)
     role = f.RoleFactory.create(project=project, permissions=["view_issues"])
-    f.MembershipFactory.create(project=project, user=user1, role=role, is_owner=True)
+    f.MembershipFactory.create(project=project, user=user1, role=role, is_admin=True)
     f.MembershipFactory.create(project=project, user=user2, role=role)
     issue = f.IssueFactory.create(owner=user2, project=project)
 
@@ -758,7 +750,7 @@ def test_watchers_assignation_for_issue(client):
     project2 = f.ProjectFactory.create(owner=user2)
     role1 = f.RoleFactory.create(project=project1)
     role2 = f.RoleFactory.create(project=project2)
-    f.MembershipFactory.create(project=project1, user=user1, role=role1, is_owner=True)
+    f.MembershipFactory.create(project=project1, user=user1, role=role1, is_admin=True)
     f.MembershipFactory.create(project=project2, user=user2, role=role2)
 
     client.login(user1)
@@ -810,7 +802,7 @@ def test_watchers_assignation_for_task(client):
     project2 = f.ProjectFactory.create(owner=user2)
     role1 = f.RoleFactory.create(project=project1, permissions=list(map(lambda x: x[0], MEMBERS_PERMISSIONS)))
     role2 = f.RoleFactory.create(project=project2)
-    f.MembershipFactory.create(project=project1, user=user1, role=role1, is_owner=True)
+    f.MembershipFactory.create(project=project1, user=user1, role=role1, is_admin=True)
     f.MembershipFactory.create(project=project2, user=user2, role=role2)
 
     client.login(user1)
@@ -862,7 +854,7 @@ def test_watchers_assignation_for_us(client):
     project2 = f.ProjectFactory.create(owner=user2)
     role1 = f.RoleFactory.create(project=project1)
     role2 = f.RoleFactory.create(project=project2)
-    f.MembershipFactory.create(project=project1, user=user1, role=role1, is_owner=True)
+    f.MembershipFactory.create(project=project1, user=user1, role=role1, is_admin=True)
     f.MembershipFactory.create(project=project2, user=user2, role=role2)
 
     client.login(user1)

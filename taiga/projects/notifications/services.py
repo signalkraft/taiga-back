@@ -100,13 +100,13 @@ def analize_object_for_watchers(obj:object, comment:str, user:object):
     if not hasattr(obj, "add_watcher"):
         return
 
-    from taiga import mdrender as mdr
 
     texts = (getattr(obj, "description", ""),
              getattr(obj, "content", ""),
              comment,)
 
-    _, data = mdr.render_and_extract(obj.get_project(), "\n".join(texts))
+    from taiga.mdrender.service import render_and_extract
+    _, data = render_and_extract(obj.get_project(), "\n".join(texts))
 
     if data["mentions"]:
         for user in data["mentions"]:
@@ -464,4 +464,4 @@ def make_ms_thread_index(msg_id, dt):
     thread_bin += md5.digest()
 
     # base64 encode
-    return base64.b64encode(thread_bin)
+    return base64.b64encode(thread_bin).decode("utf-8")

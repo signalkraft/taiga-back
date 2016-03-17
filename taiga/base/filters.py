@@ -14,6 +14,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import logging
 
 from django.apps import apps
@@ -141,7 +142,7 @@ class PermissionBasedFilterBackend(FilterBackend):
             if project_id:
                 memberships_qs = memberships_qs.filter(project_id=project_id)
             memberships_qs = memberships_qs.filter(Q(role__permissions__contains=[self.permission]) |
-                                                   Q(is_owner=True))
+                                                   Q(is_admin=True))
 
             projects_list = [membership.project_id for membership in memberships_qs]
 
@@ -242,7 +243,7 @@ class MembersFilterBackend(PermissionBasedFilterBackend):
             if project_id:
                 memberships_qs = memberships_qs.filter(project_id=project_id)
             memberships_qs = memberships_qs.filter(Q(role__permissions__contains=[self.permission]) |
-                                                   Q(is_owner=True))
+                                                   Q(is_admin=True))
 
             projects_list = [membership.project_id for membership in memberships_qs]
 
@@ -286,7 +287,7 @@ class BaseIsProjectAdminFilterBackend(object):
             return []
 
         membership_model = apps.get_model('projects', 'Membership')
-        memberships_qs = membership_model.objects.filter(user=request.user, is_owner=True)
+        memberships_qs = membership_model.objects.filter(user=request.user, is_admin=True)
         if project_id:
             memberships_qs = memberships_qs.filter(project_id=project_id)
 
@@ -435,8 +436,12 @@ class WatchersFilter(FilterBackend):
         if query_watchers:
             WatchedModel = apps.get_model("notifications", "Watched")
             watched_type = ContentType.objects.get_for_model(queryset.model)
-            watched_ids = WatchedModel.objects.filter(content_type=watched_type, user__id__in=query_watchers).values_list("object_id", flat=True)
-            queryset = queryset.filter(id__in=watched_ids)
+
+            try:
+                watched_ids = WatchedModel.objects.filter(content_type=watched_type, user__id__in=query_watchers).values_list("object_id", flat=True)
+                queryset = queryset.filter(id__in=watched_ids)
+            except ValueError:
+                raise exc.BadRequest(_("Error in filter params types."))
 
         return super().filter_queryset(request, queryset, view)
 

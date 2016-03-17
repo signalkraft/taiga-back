@@ -124,7 +124,7 @@ def get_visible_project_ids(from_user, by_user):
         #- The to user is the owner
         member_perm_conditions |= \
             Q(project__id__in=by_user_project_ids, role__permissions__contains=required_permissions) |\
-            Q(project__id__in=by_user_project_ids, is_owner=True)
+            Q(project__id__in=by_user_project_ids, is_admin=True)
 
     Membership = apps.get_model('projects', 'Membership')
     #Calculating the user memberships adding the permission filter for the by user
@@ -323,7 +323,7 @@ def get_watched_list(for_user, from_user, type=None, q=None):
     -- BEGIN Basic info: we need to mix info from different tables and denormalize it
     SELECT entities.*,
            projects_project.name as project_name, projects_project.description as description, projects_project.slug as project_slug, projects_project.is_private as project_is_private,
-           projects_project.tags_colors, projects_project.logo,
+           projects_project.blocked_code as project_blocked_code, projects_project.tags_colors, projects_project.logo,
            users_user.username assigned_to_username, users_user.full_name assigned_to_full_name, users_user.photo assigned_to_photo, users_user.email assigned_to_email
         FROM (
             {userstories_sql}
@@ -418,7 +418,7 @@ def get_liked_list(for_user, from_user, type=None, q=None):
     -- BEGIN Basic info: we need to mix info from different tables and denormalize it
     SELECT entities.*,
            projects_project.name as project_name, projects_project.description as description, projects_project.slug as project_slug, projects_project.is_private as project_is_private,
-           projects_project.tags_colors, projects_project.logo,
+           projects_project.blocked_code as project_blocked_code, projects_project.tags_colors, projects_project.logo,
            users_user.username assigned_to_username, users_user.full_name assigned_to_full_name, users_user.photo assigned_to_photo, users_user.email assigned_to_email
         FROM (
             {projects_sql}
@@ -501,7 +501,7 @@ def get_voted_list(for_user, from_user, type=None, q=None):
     -- BEGIN Basic info: we need to mix info from different tables and denormalize it
     SELECT entities.*,
            projects_project.name as project_name, projects_project.description as description, projects_project.slug as project_slug, projects_project.is_private as project_is_private,
-           projects_project.tags_colors, projects_project.logo,
+           projects_project.blocked_code as project_blocked_code, projects_project.tags_colors, projects_project.logo,
            users_user.username assigned_to_username, users_user.full_name assigned_to_full_name, users_user.photo assigned_to_photo, users_user.email assigned_to_email
         FROM (
             {userstories_sql}
@@ -573,3 +573,43 @@ def get_voted_list(for_user, from_user, type=None, q=None):
         dict(zip([col[0] for col in desc], row))
         for row in cursor.fetchall()
     ]
+
+
+def has_available_slot_for_project(user, project, members=1):
+    (enough, error) = _has_available_slot_for_project_type(user, project)
+    if not enough:
+        return (enough, error)
+    return _has_available_slot_for_project_members(user, project, members)
+
+
+def _has_available_slot_for_project_type(user, project):
+    if project.is_private:
+        if user.max_private_projects is None:
+            return (True, None)
+        elif user.owned_projects.filter(is_private=True).exclude(id=project.id).count() < user.max_private_projects:
+            return (True, None)
+        return (False, _("You can't have more private projects"))
+    else:
+        if user.max_public_projects is None:
+            return (True, None)
+        elif user.owned_projects.filter(is_private=False).exclude(id=project.id).count() < user.max_public_projects:
+            return (True, None)
+        return (False, _("You can't have more public projects"))
+
+
+
+def _has_available_slot_for_project_members(user, project, members):
+    current_memberships = project.memberships.count()
+
+    if project.is_private:
+        if user.max_members_private_projects is None:
+            return (True, None)
+        elif current_memberships + members <= user.max_members_private_projects:
+            return (True, None)
+        return (False, _("You have reached the limit of memberships for private projects"))
+    else:
+        if user.max_members_public_projects is None:
+            return (True, None)
+        elif current_memberships + members <= user.max_members_public_projects:
+            return (True, None)
+        return (False, _("You have reached the limit of memberships for public projects"))

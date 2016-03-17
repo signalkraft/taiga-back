@@ -50,7 +50,7 @@ class TaskSerializer(WatchersValidator, VoteResourceSerializerMixin, EditableWat
 
     class Meta:
         model = models.Task
-        read_only_fields = ('id', 'ref', 'created_date', 'modified_date')
+        read_only_fields = ('id', 'ref', 'created_date', 'modified_date', 'owner')
 
     def get_comment(self, obj):
         return ""
@@ -68,7 +68,7 @@ class TaskSerializer(WatchersValidator, VoteResourceSerializerMixin, EditableWat
         return mdrender(obj.project, obj.description)
 
     def get_is_closed(self, obj):
-        return obj.status.is_closed
+        return obj.status is not None and obj.status.is_closed
 
 
 class TaskListSerializer(TaskSerializer):

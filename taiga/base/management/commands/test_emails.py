@@ -20,7 +20,7 @@ import datetime
 from optparse import make_option
 
 from django.contrib.auth import get_user_model
-from django.db.models.loading import get_model
+from django.apps import apps
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -163,7 +163,7 @@ class Command(BaseCommand):
         }
 
         for notification_email in notification_emails:
-            model = get_model(*notification_email[0].split("."))
+            model = apps.get_model(*notification_email[0].split("."))
             snapshot = {
                 "subject": "Tests subject",
                 "ref": 123123,
@@ -187,3 +187,38 @@ class Command(BaseCommand):
             cls = type("InlineCSSTemplateMail", (InlineCSSTemplateMail,), {"name": notification_email[1]})
             email = cls()
             email.send(test_email, context)
+
+
+        # Transfer Emails
+        context = {
+            "project": Project.objects.all().order_by("?").first(),
+            "requester": User.objects.all().order_by("?").first(),
+        }
+        email = mail_builder.transfer_request(test_email, context)
+        email.send()
+
+        context = {
+            "project": Project.objects.all().order_by("?").first(),
+            "receiver": User.objects.all().order_by("?").first(),
+            "token": "test-token",
+            "reason": "Test reason"
+        }
+        email = mail_builder.transfer_start(test_email, context)
+        email.send()
+
+        context = {
+            "project": Project.objects.all().order_by("?").first(),
+            "old_owner": User.objects.all().order_by("?").first(),
+            "new_owner": User.objects.all().order_by("?").first(),
+            "reason": "Test reason"
+        }
+        email = mail_builder.transfer_accept(test_email, context)
+        email.send()
+
+        context = {
+            "project": Project.objects.all().order_by("?").first(),
+            "rejecter": User.objects.all().order_by("?").first(),
+            "reason": "Test reason"
+        }
+        email = mail_builder.transfer_reject(test_email, context)
+        email.send()

@@ -16,9 +16,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from importlib import import_module
 
-import hashlib
-import os
-import os.path as path
 import random
 import re
 
@@ -27,6 +24,7 @@ from unidecode import unidecode
 
 from django.apps import apps
 from django.apps.config import MODELS_MODULE_NAME
+from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import AppRegistryNotReady
 from django.db import models
@@ -35,16 +33,15 @@ from django.utils.translation import ugettext_lazy as _
 from django.contrib.auth.models import UserManager, AbstractBaseUser
 from django.core import validators
 from django.utils import timezone
-from django.utils.encoding import force_bytes
-from django.template.defaultfilters import slugify
 
 from django_pgjson.fields import JsonField
 from djorm_pgarray.fields import TextArrayField
 
 from taiga.auth.tokens import get_token_for_user
 from taiga.base.utils.slug import slugify_uniquely
-from taiga.base.utils.iterators import split_by_n
+from taiga.base.utils.files import get_file_path
 from taiga.permissions.permissions import MEMBERS_PERMISSIONS
+from taiga.projects.choices import BLOCKED_BY_OWNER_LEAVING
 from taiga.projects.notifications.choices import NotifyLevel
 
 
@@ -90,29 +87,17 @@ def generate_random_hex_color():
 
 
 def get_user_file_path(instance, filename):
-    basename = path.basename(filename).lower()
-    base, ext = path.splitext(basename)
-    base = slugify(unidecode(base))[0:100]
-    basename = "".join([base, ext])
-
-    hs = hashlib.sha256()
-    hs.update(force_bytes(timezone.now().isoformat()))
-    hs.update(os.urandom(1024))
-
-    p1, p2, p3, p4, *p5 = split_by_n(hs.hexdigest(), 1)
-    hash_part = path.join(p1, p2, p3, p4, "".join(p5))
-
-    return path.join("user", hash_part, basename)
+    return get_file_path(instance, filename, "user")
 
 
 class PermissionsMixin(models.Model):
     """
     A mixin class that adds the fields and methods necessary to support
-    Django's Permission model using the ModelBackend.
+    Django"s Permission model using the ModelBackend.
     """
-    is_superuser = models.BooleanField(_('superuser status'), default=False,
-        help_text=_('Designates that this user has all permissions without '
-                    'explicitly assigning them.'))
+    is_superuser = models.BooleanField(_("superuser status"), default=False,
+        help_text=_("Designates that this user has all permissions without "
+                    "explicitly assigning them."))
 
     class Meta:
         abstract = True
@@ -141,25 +126,25 @@ class PermissionsMixin(models.Model):
 
 
 class User(AbstractBaseUser, PermissionsMixin):
-    username = models.CharField(_('username'), max_length=255, unique=True,
-        help_text=_('Required. 30 characters or fewer. Letters, numbers and '
-                    '/./-/_ characters'),
+    username = models.CharField(_("username"), max_length=255, unique=True,
+        help_text=_("Required. 30 characters or fewer. Letters, numbers and "
+                    "/./-/_ characters"),
         validators=[
-            validators.RegexValidator(re.compile('^[\w.-]+$'), _('Enter a valid username.'), 'invalid')
+            validators.RegexValidator(re.compile("^[\w.-]+$"), _("Enter a valid username."), "invalid")
         ])
-    email = models.EmailField(_('email address'), max_length=255, blank=True, unique=True)
-    is_active = models.BooleanField(_('active'), default=True,
-        help_text=_('Designates whether this user should be treated as '
-                    'active. Unselect this instead of deleting accounts.'))
+    email = models.EmailField(_("email address"), max_length=255, blank=True, unique=True)
+    is_active = models.BooleanField(_("active"), default=True,
+        help_text=_("Designates whether this user should be treated as "
+                    "active. Unselect this instead of deleting accounts."))
 
-    full_name = models.CharField(_('full name'), max_length=256, blank=True)
+    full_name = models.CharField(_("full name"), max_length=256, blank=True)
     color = models.CharField(max_length=9, null=False, blank=True, default=generate_random_hex_color,
                              verbose_name=_("color"))
     bio = models.TextField(null=False, blank=True, default="", verbose_name=_("biography"))
     photo = models.FileField(upload_to=get_user_file_path,
                              max_length=500, null=True, blank=True,
                              verbose_name=_("photo"))
-    date_joined = models.DateTimeField(_('date joined'), default=timezone.now)
+    date_joined = models.DateTimeField(_("date joined"), default=timezone.now)
     lang = models.CharField(max_length=20, null=True, blank=True, default="",
                             verbose_name=_("default language"))
     theme = models.CharField(max_length=100, null=True, blank=True, default="",
@@ -174,16 +159,33 @@ class User(AbstractBaseUser, PermissionsMixin):
     email_token = models.CharField(max_length=200, null=True, blank=True, default=None,
                          verbose_name=_("email token"))
 
-    new_email = models.EmailField(_('new email address'), null=True, blank=True)
+    new_email = models.EmailField(_("new email address"), null=True, blank=True)
 
     is_system = models.BooleanField(null=False, blank=False, default=False)
+
+
+    max_private_projects = models.IntegerField(null=True, blank=True,
+                                               default=settings.MAX_PRIVATE_PROJECTS_PER_USER,
+                                               verbose_name=_("max number of private projects owned"))
+    max_public_projects = models.IntegerField(null=True, blank=True,
+                                              default=settings.MAX_PUBLIC_PROJECTS_PER_USER,
+                                              verbose_name=_("max number of public projects owned"))
+    max_members_private_projects = models.IntegerField(null=True, blank=True,
+                                                      default=settings.MAX_MEMBERS_PRIVATE_PROJECTS,
+                                                      verbose_name=_("max number of memberships for "
+                                                                     "each owned private project"))
+    max_members_public_projects = models.IntegerField(null=True, blank=True,
+                                                      default=settings.MAX_MEMBERS_PUBLIC_PROJECTS,
+                                                      verbose_name=_("max number of memberships for "
+                                                                     "each owned public project"))
+
     _cached_memberships = None
     _cached_liked_ids = None
     _cached_watched_ids = None
     _cached_notify_levels = None
 
-    USERNAME_FIELD = 'username'
-    REQUIRED_FIELDS = ['email']
+    USERNAME_FIELD = "username"
+    REQUIRED_FIELDS = ["email"]
 
     objects = UserManager()
 
@@ -191,9 +193,6 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name = "user"
         verbose_name_plural = "users"
         ordering = ["username"]
-        permissions = (
-            ("view_user", "Can view user"),
-        )
 
     def __str__(self):
         return self.get_full_name()
@@ -283,6 +282,9 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.save()
         self.auth_data.all().delete()
 
+        #Blocking all owned users
+        self.owned_projects.update(blocked_code=BLOCKED_BY_OWNER_LEAVING)
+
 
 class Role(models.Model):
     name = models.CharField(max_length=200, null=False, blank=False,
@@ -313,9 +315,6 @@ class Role(models.Model):
         verbose_name_plural = "roles"
         ordering = ["order", "slug"]
         unique_together = (("slug", "project"),)
-        permissions = (
-            ("view_role", "Can view role"),
-        )
 
     def __str__(self):
         return self.name

@@ -39,9 +39,13 @@ class WatchedResourceMixin:
     Rest Framework resource mixin for resources susceptible
     to be notifiable about their changes.
 
-    NOTE: this mixin has hard dependency on HistoryMixin
+    NOTE:
+    - this mixin has hard dependency on HistoryMixin
     defined on history app and should be located always
     after it on inheritance definition.
+
+    - the classes using this mixing must have a method:
+    def pre_conditions_on_save(self, obj)
     """
 
     _not_notify = False
@@ -58,6 +62,7 @@ class WatchedResourceMixin:
     def watch(self, request, pk=None):
         obj = self.get_object()
         self.check_permissions(request, "watch", obj)
+        self.pre_conditions_on_save(obj)
         services.add_watcher(obj, request.user)
         return response.Ok()
 
@@ -65,6 +70,7 @@ class WatchedResourceMixin:
     def unwatch(self, request, pk=None):
         obj = self.get_object()
         self.check_permissions(request, "unwatch", obj)
+        self.pre_conditions_on_save(obj)
         services.remove_watcher(obj, request.user)
         return response.Ok()
 
@@ -227,13 +233,14 @@ class EditableWatchedResourceModelSerializer(WatchedResourceModelSerializer):
 
     def to_native(self, obj):
         #if watchers wasn't attached via the get_queryset of the viewset we need to manually add it
-        if obj is not None and not hasattr(obj, "watchers"):
-            obj.watchers = [user.id for user in obj.get_watchers()]
+        if obj is not None:
+            if not hasattr(obj, "watchers"):
+                obj.watchers = [user.id for user in obj.get_watchers()]
 
-        request = self.context.get("request", None)
-        user = request.user if request else None
-        if user and user.is_authenticated():
-            obj.is_watcher = user.id in obj.watchers
+            request = self.context.get("request", None)
+            user = request.user if request else None
+            if user and user.is_authenticated():
+                obj.is_watcher = user.id in obj.watchers
 
         return super(WatchedResourceModelSerializer, self).to_native(obj)
 

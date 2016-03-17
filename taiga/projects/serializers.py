@@ -33,7 +33,8 @@ from taiga.users.serializers import ProjectRoleSerializer
 from taiga.users.validators import RoleExistsValidator
 
 from taiga.permissions.service import get_user_project_permissions
-from taiga.permissions.service import is_project_owner
+from taiga.permissions.service import is_project_admin, is_project_owner
+from taiga.projects.mixins.serializers import ValidateDuplicatedNameInProjectMixin
 
 from . import models
 from . import services
@@ -49,52 +50,16 @@ from .likes.mixins.serializers import FanResourceSerializerMixin
 ## Custom values for selectors
 ######################################################
 
-class PointsSerializer(serializers.ModelSerializer):
+class PointsSerializer(ValidateDuplicatedNameInProjectMixin):
     class Meta:
         model = models.Points
         i18n_fields = ("name",)
 
-    def validate_name(self, attrs, source):
-        """
-        Check the points name is not duplicated in the project on creation
-        """
-        qs = None
-        # If the user story status exists:
-        if self.object and attrs.get("name", None):
-            qs = models.Points.objects.filter(project=self.object.project, name=attrs[source])
 
-        if not self.object and attrs.get("project", None)  and attrs.get("name", None):
-            qs = models.Points.objects.filter(project=attrs["project"], name=attrs[source])
-
-        if qs and qs.exists():
-              raise serializers.ValidationError(_("Name duplicated for the project"))
-
-        return attrs
-
-
-class UserStoryStatusSerializer(serializers.ModelSerializer):
+class UserStoryStatusSerializer(ValidateDuplicatedNameInProjectMixin):
     class Meta:
         model = models.UserStoryStatus
         i18n_fields = ("name",)
-
-    def validate_name(self, attrs, source):
-        """
-        Check the status name is not duplicated in the project on creation
-        """
-        qs = None
-        # If the user story status exists:
-        if self.object and attrs.get("name", None):
-            qs = models.UserStoryStatus.objects.filter(project=self.object.project,
-                                                       name=attrs[source])
-
-        if not self.object and attrs.get("project", None)  and attrs.get("name", None):
-            qs = models.UserStoryStatus.objects.filter(project=attrs["project"],
-                                                       name=attrs[source])
-
-        if qs and qs.exists():
-              raise serializers.ValidationError(_("Name duplicated for the project"))
-
-        return attrs
 
 
 class BasicUserStoryStatusSerializer(serializers.ModelSerializer):
@@ -104,27 +69,10 @@ class BasicUserStoryStatusSerializer(serializers.ModelSerializer):
         fields = ("name", "color")
 
 
-class TaskStatusSerializer(serializers.ModelSerializer):
+class TaskStatusSerializer(ValidateDuplicatedNameInProjectMixin):
     class Meta:
         model = models.TaskStatus
         i18n_fields = ("name",)
-
-    def validate_name(self, attrs, source):
-        """
-        Check the task name is not duplicated in the project on creation
-        """
-        qs = None
-        # If the user story status exists:
-        if self.object and attrs.get("name", None):
-            qs = models.TaskStatus.objects.filter(project=self.object.project, name=attrs[source])
-
-        if not self.object and attrs.get("project", None)  and attrs.get("name", None):
-            qs = models.TaskStatus.objects.filter(project=attrs["project"], name=attrs[source])
-
-        if qs and qs.exists():
-              raise serializers.ValidationError(_("Name duplicated for the project"))
-
-        return attrs
 
 
 class BasicTaskStatusSerializerSerializer(serializers.ModelSerializer):
@@ -135,39 +83,22 @@ class BasicTaskStatusSerializerSerializer(serializers.ModelSerializer):
         fields = ("name", "color")
 
 
-class SeveritySerializer(serializers.ModelSerializer):
+class SeveritySerializer(ValidateDuplicatedNameInProjectMixin):
     class Meta:
         model = models.Severity
         i18n_fields = ("name",)
 
 
-class PrioritySerializer(serializers.ModelSerializer):
+class PrioritySerializer(ValidateDuplicatedNameInProjectMixin):
     class Meta:
         model = models.Priority
         i18n_fields = ("name",)
 
 
-class IssueStatusSerializer(serializers.ModelSerializer):
+class IssueStatusSerializer(ValidateDuplicatedNameInProjectMixin):
     class Meta:
         model = models.IssueStatus
         i18n_fields = ("name",)
-
-    def validate_name(self, attrs, source):
-        """
-        Check the issue name is not duplicated in the project on creation
-        """
-        qs = None
-        # If the user story status exists:
-        if self.object and attrs.get("name", None):
-            qs = models.IssueStatus.objects.filter(project=self.object.project, name=attrs[source])
-
-        if not self.object and attrs.get("project", None)  and attrs.get("name", None):
-            qs = models.IssueStatus.objects.filter(project=attrs["project"], name=attrs[source])
-
-        if qs and qs.exists():
-              raise serializers.ValidationError(_("Name duplicated for the project"))
-
-        return attrs
 
 
 class BasicIssueStatusSerializer(serializers.ModelSerializer):
@@ -177,7 +108,7 @@ class BasicIssueStatusSerializer(serializers.ModelSerializer):
         fields = ("name", "color")
 
 
-class IssueTypeSerializer(serializers.ModelSerializer):
+class IssueTypeSerializer(ValidateDuplicatedNameInProjectMixin):
     class Meta:
         model = models.IssueType
         i18n_fields = ("name",)
@@ -199,6 +130,7 @@ class MembershipSerializer(serializers.ModelSerializer):
     project_name = serializers.SerializerMethodField("get_project_name")
     project_slug = serializers.SerializerMethodField("get_project_slug")
     invited_by = UserBasicInfoSerializer(read_only=True)
+    is_owner = serializers.SerializerMethodField("get_is_owner")
 
     class Meta:
         model = models.Membership
@@ -215,6 +147,10 @@ class MembershipSerializer(serializers.ModelSerializer):
 
     def get_project_slug(self, obj):
         return obj.project.slug if obj and obj.project else ""
+
+    def get_is_owner(self, obj):
+        return (obj and obj.user_id and obj.project_id and obj.project.owner_id and
+                obj.user_id == obj.project.owner_id)
 
     def validate_email(self, attrs, source):
         project = attrs.get("project", None)
@@ -250,15 +186,14 @@ class MembershipSerializer(serializers.ModelSerializer):
 
         return attrs
 
-    def validate_is_owner(self, attrs, source):
-        is_owner = attrs[source]
+    def validate_is_admin(self, attrs, source):
         project = attrs.get("project", None)
         if project is None:
             project = self.object.project
 
         if (self.object and
-                not services.project_has_valid_owners(project, exclude_user=self.object.user)):
-            raise serializers.ValidationError(_("At least one of the user must be an active admin"))
+                not services.project_has_valid_admins(project, exclude_user=self.object.user)):
+            raise serializers.ValidationError(_("In this project at least one of the users must be an active admin."))
 
         return attrs
 
@@ -311,7 +246,11 @@ class ProjectSerializer(FanResourceSerializerMixin, WatchedResourceModelSerializ
     anon_permissions = PgArrayField(required=False)
     public_permissions = PgArrayField(required=False)
     my_permissions = serializers.SerializerMethodField("get_my_permissions")
+
+    owner = UserBasicInfoSerializer(read_only=True)
     i_am_owner = serializers.SerializerMethodField("get_i_am_owner")
+    i_am_admin = serializers.SerializerMethodField("get_i_am_admin")
+    i_am_member = serializers.SerializerMethodField("get_i_am_member")
 
     tags = TagsField(default=[], required=False)
     tags_colors = TagsColorsField(required=False)
@@ -325,9 +264,10 @@ class ProjectSerializer(FanResourceSerializerMixin, WatchedResourceModelSerializ
 
     class Meta:
         model = models.Project
-        read_only_fields = ("created_date", "modified_date", "owner", "slug")
+        read_only_fields = ("created_date", "modified_date", "slug", "blocked_code")
         exclude = ("logo", "last_us_ref", "last_task_ref", "last_issue_ref",
-                   "issues_csv_uuid", "tasks_csv_uuid", "userstories_csv_uuid")
+                   "issues_csv_uuid", "tasks_csv_uuid", "userstories_csv_uuid",
+                   "transfer_token")
 
     def get_my_permissions(self, obj):
         if "request" in self.context:
@@ -337,6 +277,18 @@ class ProjectSerializer(FanResourceSerializerMixin, WatchedResourceModelSerializ
     def get_i_am_owner(self, obj):
         if "request" in self.context:
             return is_project_owner(self.context["request"].user, obj)
+        return False
+
+    def get_i_am_admin(self, obj):
+        if "request" in self.context:
+            return is_project_admin(self.context["request"].user, obj)
+        return False
+
+    def get_i_am_member(self, obj):
+        if "request" in self.context:
+            user = self.context["request"].user
+            if not user.is_anonymous() and user.cached_membership_for_project(obj):
+                return True
         return False
 
     def get_total_closed_milestones(self, obj):
@@ -402,7 +354,7 @@ class ProjectDetailSerializer(ProjectSerializer):
 class ProjectDetailAdminSerializer(ProjectDetailSerializer):
     class Meta:
         model = models.Project
-        read_only_fields = ("created_date", "modified_date", "owner", "slug")
+        read_only_fields = ("created_date", "modified_date", "slug", "blocked_code")
         exclude = ("logo", "last_us_ref", "last_task_ref", "last_issue_ref")
 
 
