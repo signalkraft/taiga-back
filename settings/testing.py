@@ -29,17 +29,6 @@ INSTALLED_APPS = INSTALLED_APPS + [
     "tests",
 ]
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'test',
-        'USER': 'postgres',
-        'PASSWORD': 'postgres',
-        'HOST': 'localhost',
-        'PORT': '',
-    }
-}
-
 REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {
     "anon": None,
     "user": None,
